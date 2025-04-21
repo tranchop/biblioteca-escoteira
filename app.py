@@ -1,81 +1,96 @@
 import streamlit as st
-from database import *
+import pandas as pd
+import plotly.express as px
+from datetime import date
+from database import (
+    criar_tabelas, adicionar_livro, listar_livros,
+    filtrar_livros_por_status, adicionar_usuario, listar_usuarios,
+    emprestar_livro, listar_emprestimos, devolver_livro,
+    listar_historico
+)
 
+# Inicialização
 st.set_page_config(page_title="Biblioteca Escoteira", layout="wide")
+criar_tabelas()
+st.title("📚 Sistema Biblioteca Escoteira")
 
-# Sidebar para navegação
-pagina = st.sidebar.selectbox("Navegar para", [
-    "Cadastrar Livro",
-    "Cadastrar Usuário",
-    "Emprestar/Devolver Livro",
-    "Status dos Livros"
-])
+# Menu lateral
+menu = st.sidebar.selectbox(
+    "Menu", ["Livros", "Usuários", "Empréstimos", "Histórico", "Estatísticas"]
+)
 
-# Página 1: Cadastrar Livro
-if pagina == "Cadastrar Livro":
-    st.title("📚 Cadastrar Livro")
-    titulo = st.text_input("Título do livro")
-    autor = st.text_input("Autor")
-    descricao = st.text_area("Descrição")
+if menu == "Livros":
+    st.header("📔 Livros Cadastrados")
+    livros = listar_livros()
+    df_livros = pd.DataFrame(livros, columns=["ID", "Título", "Autor", "Status", "Descrição"])
+    st.dataframe(df_livros)
 
+    st.subheader("Adicionar Novo Livro")
+    titulo = st.text_input("Título", key="livro_titulo")
+    autor = st.text_input("Autor", key="livro_autor")
+    descricao = st.text_area("Descrição", key="livro_desc")
     if st.button("Adicionar Livro"):
-        adicionar_livro(titulo, autor, descricao)
-        st.success("Livro adicionado com sucesso!")
+        if titulo and autor:
+            adicionar_livro(titulo, autor, descricao)
+            st.experimental_rerun()
+        else:
+            st.error("Preencha título e autor.")
 
-# Página 2: Cadastrar Usuário
-elif pagina == "Cadastrar Usuário":
-    st.title("🧑 Cadastrar Usuário")
-    nome = st.text_input("Nome do usuário")
-    celular = st.text_input("Celular")
-    observacoes = st.text_area("Observações")
-
-    if st.button("Cadastrar Usuário"):
-        adicionar_usuario(nome, celular, observacoes)
-        st.success("Usuário cadastrado com sucesso!")
-
-# Página 3: Emprestar/Devolver Livro
-elif pagina == "Emprestar/Devolver Livro":
-    st.title("🔁 Emprestar ou Devolver Livro")
-
-    livros_disponiveis = [livro for livro in listar_livros() if livro[3] == 'disponível']
+elif menu == "Usuários":
+    st.header("👤 Usuários Cadastrados")
     usuarios = listar_usuarios()
+    df_usuarios = pd.DataFrame(usuarios, columns=["ID", "Nome", "Celular", "Observações"])
+    st.dataframe(df_usuarios)
 
-    st.subheader("📖 Emprestar Livro")
-    if livros_disponiveis and usuarios:
-        livro_escolhido = st.selectbox("Escolha o livro", livros_disponiveis, format_func=lambda x: x[1])
-        usuario_escolhido = st.selectbox("Escolha o usuário", usuarios, format_func=lambda x: x[1])
-        prazo = st.date_input("Prazo de devolução")
+    st.subheader("Adicionar Novo Usuário")
+    nome = st.text_input("Nome", key="user_nome")
+    celular = st.text_input("Celular", key="user_celular")
+    observacoes = st.text_area("Observações", key="user_obs")
+    if st.button("Adicionar Usuário"):
+        if nome:
+            adicionar_usuario(nome, celular, observacoes)
+            st.experimental_rerun()
+        else:
+            st.error("Preencha o nome.")
 
-        if st.button("Emprestar"):
-            emprestar_livro(livro_escolhido[0], usuario_escolhido[0], prazo)
-            st.success("Livro emprestado com sucesso!")
+elif menu == "Empréstimos":
+    st.header("🔄 Gerenciar Empréstimos")
+    status = st.selectbox("Filtrar status dos livros", ["Disponível", "Emprestado"])
+    livros_disp = filtrar_livros_por_status(status)
+    df_disp = pd.DataFrame(livros_disp, columns=["ID", "Título", "Autor", "Status", "Descrição"])
+    st.write(df_disp)
+
+    st.subheader("Novo Empréstimo")
+    if not df_disp.empty:
+        sel_livro = st.selectbox("Livro", df_disp['Título'])
+        sel_usuario = st.selectbox("Usuário", [u[1] for u in listar_usuarios()])
+        prazo = st.slider("Prazo (dias)", 1, 30, 7)
+        if st.button("Emprestar Livro"):
+            livro_id = int(df_disp[df_disp['Título'] == sel_livro]['ID'].iloc[0])
+            usuario_id = int([u[0] for u in listar_usuarios() if u[1] == sel_usuario][0])
+            emprestar_livro(livro_id, usuario_id, prazo)
+            st.success("Empréstimo registrado!")
+            st.experimental_rerun()
     else:
-        st.warning("Não há livros disponíveis ou usuários cadastrados.")
+        st.info("Nenhum livro disponível para empréstimo.")
 
-    st.subheader("📦 Devolver Livro")
-    emprestados = status_livros()
-    if emprestados:
-        livro_para_devolver = st.selectbox("Escolha o livro para devolver", emprestados, format_func=lambda x: x[0])
+elif menu == "Histórico":
+    st.header("📜 Histórico de Empréstimos")
+    hist = listar_historico()
+    df_hist = pd.DataFrame(hist, columns=["Título", "Usuário", "Data Empréstimo", "Data Devolução"])
+    st.dataframe(df_hist)
 
-        if st.button("Devolver"):
-            devolver_livro(livro_para_devolver[0])
-            st.success("Livro devolvido com sucesso!")
+elif menu == "Estatísticas":
+    st.header("📊 Estatísticas de Livros")
+    df_livros = pd.DataFrame(listar_livros(), columns=["ID", "Título", "Autor", "Status", "Descrição"])
+    if not df_livros.empty:
+        # Pizza de status
+        fig1 = px.pie(df_livros, names='Status', title='Distribuição de Status')
+        st.plotly_chart(fig1)
+        # Barra de autores
+        top_autores = df_livros['Autor'].value_counts().nlargest(10).reset_index()
+        top_autores.columns = ['Autor', 'Quantidade']
+        fig2 = px.bar(top_autores, x='Autor', y='Quantidade', title='Top 10 Autores')
+        st.plotly_chart(fig2)
     else:
-        st.info("Nenhum livro emprestado no momento.")
-
-# Página 4: Status dos Livros
-elif pagina == "Status dos Livros":
-    st.title("📊 Status dos Livros")
-    status = status_livros()
-
-    st.subheader("🔍 Filtros")
-    filtro_nome = st.text_input("Filtrar por nome do usuário")
-    filtro_livro = st.text_input("Filtrar por título do livro")
-
-    status_filtrado = [s for s in status if filtro_nome.lower() in s[1].lower() and filtro_livro.lower() in s[0].lower()]
-
-    st.write("### 📋 Livros Emprestados")
-    if status_filtrado:
-        st.table(status_filtrado)
-    else:
-        st.info("Nenhum empréstimo encontrado com esses filtros.")
+        st.info("Nenhum livro cadastrado para gerar estatísticas.")
