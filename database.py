@@ -1,113 +1,101 @@
 import sqlite3
-from datetime import datetime
 
 def conectar():
-    return sqlite3.connect("biblioteca.db")
+    return sqlite3.connect('biblioteca.db')
 
-def criar_tabela():
+def criar_tabelas():
     conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
+    c = conn.cursor()
+    c.execute('''
         CREATE TABLE IF NOT EXISTS livros (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            titulo TEXT NOT NULL,
-            autor TEXT NOT NULL,
-            ano INTEGER
-        );
-    """)
-
-    cursor.execute("""
+            titulo TEXT,
+            autor TEXT,
+            status TEXT DEFAULT 'disponível',
+            descricao TEXT
+        )
+    ''')
+    c.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL
-        );
-    """)
-
-    cursor.execute("""
+            nome TEXT,
+            celular TEXT,
+            observacoes TEXT
+        )
+    ''')
+    c.execute('''
         CREATE TABLE IF NOT EXISTS emprestimos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            livro_id INTEGER NOT NULL,
-            usuario_id INTEGER NOT NULL,
-            data_emprestimo TEXT NOT NULL,
-            prazo_dias INTEGER NOT NULL,
-            data_devolucao TEXT,
-            FOREIGN KEY (livro_id) REFERENCES livros(id),
-            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
-        );
-    """)
-
+            id_livro INTEGER,
+            id_usuario INTEGER,
+            prazo TEXT,
+            FOREIGN KEY(id_livro) REFERENCES livros(id),
+            FOREIGN KEY(id_usuario) REFERENCES usuarios(id)
+        )
+    ''')
     conn.commit()
     conn.close()
 
-def adicionar_livro(titulo, autor, ano):
+criar_tabelas()
+
+def adicionar_livro(titulo, autor, descricao):
     conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO livros (titulo, autor, ano) VALUES (?, ?, ?)", (titulo, autor, ano))
+    c = conn.cursor()
+    c.execute('INSERT INTO livros (titulo, autor, descricao) VALUES (?, ?, ?)', (titulo, autor, descricao))
+    conn.commit()
+    conn.close()
+
+def adicionar_usuario(nome, celular, observacoes):
+    conn = conectar()
+    c = conn.cursor()
+    c.execute('INSERT INTO usuarios (nome, celular, observacoes) VALUES (?, ?, ?)', (nome, celular, observacoes))
     conn.commit()
     conn.close()
 
 def listar_livros():
     conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM livros")
-    livros = cursor.fetchall()
+    c = conn.cursor()
+    c.execute('SELECT * FROM livros')
+    livros = c.fetchall()
     conn.close()
     return livros
 
-def adicionar_usuario(nome):
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO usuarios (nome) VALUES (?)", (nome,))
-    conn.commit()
-    conn.close()
-
 def listar_usuarios():
     conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM usuarios")
-    usuarios = cursor.fetchall()
+    c = conn.cursor()
+    c.execute('SELECT * FROM usuarios')
+    usuarios = c.fetchall()
     conn.close()
     return usuarios
 
-def registrar_emprestimo(livro_id, usuario_id, prazo_dias):
+def emprestar_livro(id_livro, id_usuario, prazo):
     conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO emprestimos (livro_id, usuario_id, data_emprestimo, prazo_dias)
-        VALUES (?, ?, ?, ?)
-    """, (livro_id, usuario_id, datetime.now().strftime("%Y-%m-%d"), prazo_dias))
+    c = conn.cursor()
+    c.execute('UPDATE livros SET status = ? WHERE id = ?', ('emprestado', id_livro))
+    c.execute('INSERT INTO emprestimos (id_livro, id_usuario, prazo) VALUES (?, ?, ?)', (id_livro, id_usuario, prazo))
     conn.commit()
     conn.close()
 
-def registrar_devolucao(emprestimo_id):
+def devolver_livro(titulo_livro):
     conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE emprestimos SET data_devolucao = ?
-        WHERE id = ?
-    """, (datetime.now().strftime("%Y-%m-%d"), emprestimo_id))
+    c = conn.cursor()
+    c.execute('SELECT id FROM livros WHERE titulo = ?', (titulo_livro,))
+    id_livro = c.fetchone()[0]
+    c.execute('UPDATE livros SET status = ? WHERE id = ?', ('disponível', id_livro))
+    c.execute('DELETE FROM emprestimos WHERE id_livro = ?', (id_livro,))
     conn.commit()
     conn.close()
 
-def listar_emprestimos(pendentes=True):
+def status_livros():
     conn = conectar()
-    cursor = conn.cursor()
-    if pendentes:
-        cursor.execute("""
-            SELECT e.id, l.titulo, u.nome, e.data_emprestimo, e.data_devolucao, e.prazo_dias
-            FROM emprestimos e
-            JOIN livros l ON e.livro_id = l.id
-            JOIN usuarios u ON e.usuario_id = u.id
-            WHERE e.data_devolucao IS NULL
-        """)
-    else:
-        cursor.execute("""
-            SELECT e.id, l.titulo, u.nome, e.data_emprestimo, e.data_devolucao, e.prazo_dias
-            FROM emprestimos e
-            JOIN livros l ON e.livro_id = l.id
-            JOIN usuarios u ON e.usuario_id = u.id
-        """)
-    emprestimos = cursor.fetchall()
+    c = conn.cursor()
+    c.execute('''
+        SELECT livros.titulo, usuarios.nome, emprestimos.prazo
+        FROM emprestimos
+        JOIN livros ON emprestimos.id_livro = livros.id
+        JOIN usuarios ON emprestimos.id_usuario = usuarios.id
+        WHERE livros.status = 'emprestado'
+    ''')
+    status = c.fetchall()
     conn.close()
-    return emprestimos
+    return status
